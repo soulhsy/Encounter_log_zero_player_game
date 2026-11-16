@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 아이패드 사파리 전체화면(웹 앱) 모드 지원 메타 태그 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>Encounter_log_zero_player_game</title>
+    <title>Conway's Game of Life - Text to Algorithm</title>
     <style>
         body, html {
             margin: 0;
@@ -58,7 +59,7 @@
 
     <script>
         // 1. 초기 씨앗이 될 원본 텍스트
-        const sourceText = "1. 콘웨이의 생명 게임 (Conway's Game of Life) 1970년 수학자 존 콘웨이가 고안한 세포 자동자(Cellular Automaton) 시뮬레이션입니다. 바둑판같은 격자 위에 검은색(생존)과 흰색(죽음) 세포들이 놓여 있습니다. 플레이어는 처음에 몇 개의 세포를 어디에 찍을지(초기값)만 결정합니다. 이후에는 '주변에 세포가 너무 많으면 굶어 죽고, 적당하면 번식한다'는 단 4줄의 맹목적인 수학적 규칙(알고리즘)에 따라 세포들이 스스로 패턴을 만들며 무한히 증식하고 소멸합니다. 인간의 미세한 초기 의도가 기계적 연산을 거쳐 복잡하고 기괴한 디지털 생명체의 박동으로 진화하는 것을 지켜보는 고전적인 매체입니다.";
+        const sourceText = "콘웨이의 생명 게임 (Conway's Game of Life) 1970년 수학자 존 콘웨이가 고안한 세포 자동자(Cellular Automaton) 시뮬레이션입니다. 바둑판같은 격자 위에 검은색(생존)과 흰색(죽음) 세포들이 놓여 있습니다. 플레이어는 처음에 몇 개의 세포를 어디에 찍을지(초기값)만 결정합니다. 이후에는 '주변에 세포가 너무 많으면 굶어 죽고, 적당하면 번식한다'는 단 4줄의 맹목적인 수학적 규칙(알고리즘)에 따라 세포들이 스스로 패턴을 만들며 무한히 증식하고 소멸합니다. 인간의 미세한 초기 의도가 기계적 연산을 거쳐 복잡하고 기괴한 디지털 생명체의 박동으로 진화하는 것을 지켜보는 고전적인 매체입니다.";
 
         // 2. 텍스트를 UTF-8 인코딩 후 이진수(Binary)와 16진수(Hex) 문자열로 변환
         const encoder = new TextEncoder();
@@ -82,7 +83,7 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d', { alpha: false }); // 성능 최적화를 위해 alpha 비활성화
         
-        const cellSize = 8; // 픽셀 크기를 구글 검색결과와 유사하게 8로 조정
+        const cellSize = 14; // 픽셀 크기를 14px로 증가 (더 굵직하고 확실한 움직임)
         let cols, rows;
         let grid = [];
         let nextGrid = [];
@@ -174,6 +175,73 @@
             }
         }
 
+        // --- 추가된 상호작용(터치/마우스) 및 생태계 유지(Entropy) 로직 ---
+
+        let isDrawing = false;
+
+        // 특정 좌표에 생명체 군집(블록) 생성 (드래그 시 붓펜 효과)
+        function spawnCellsAt(clientX, clientY) {
+            const gridX = Math.floor(clientX / cellSize);
+            const gridY = Math.floor(clientY / cellSize);
+            
+            // 터치한 위치 주변 3x3 영역에 확률적으로 세포 생성
+            for(let i = -1; i <= 1; i++) {
+                for(let j = -1; j <= 1; j++) {
+                    if (Math.random() > 0.3) {
+                        const targetX = (gridX + i + cols) % cols;
+                        const targetY = (gridY + j + rows) % rows;
+                        grid[targetX][targetY] = 1;
+                    }
+                }
+            }
+        }
+
+        // PC 마우스 지원
+        canvas.addEventListener('mousedown', (e) => { isDrawing = true; spawnCellsAt(e.clientX, e.clientY); });
+        canvas.addEventListener('mousemove', (e) => { if(isDrawing) spawnCellsAt(e.clientX, e.clientY); });
+        canvas.addEventListener('mouseup', () => { isDrawing = false; });
+        canvas.addEventListener('mouseleave', () => { isDrawing = false; });
+
+        // 아이패드 터치 지원 (스크롤 방지 포함)
+        canvas.addEventListener('touchstart', (e) => { 
+            isDrawing = true; 
+            e.preventDefault(); 
+            for(let i = 0; i < e.touches.length; i++) spawnCellsAt(e.touches[i].clientX, e.touches[i].clientY);
+        }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => { 
+            if(isDrawing) {
+                e.preventDefault();
+                for(let i = 0; i < e.touches.length; i++) spawnCellsAt(e.touches[i].clientX, e.touches[i].clientY);
+            }
+        }, {passive: false});
+        canvas.addEventListener('touchend', () => { isDrawing = false; });
+
+        // 정체 방지(Entropy) 로직: 3초마다 화면 무작위 위치에 돌연변이 발생
+        let lastEntropyTime = 0;
+        function injectEntropy(timestamp) {
+            if (timestamp - lastEntropyTime > 3000) {
+                lastEntropyTime = timestamp;
+                // 화면 크기에 비례하여 동시다발적으로 뿌려질 군집 개수
+                const clusterCount = Math.floor((cols * rows) / 800) + 1;
+                
+                for(let c = 0; c < clusterCount; c++) {
+                    const randomX = Math.floor(Math.random() * cols);
+                    const randomY = Math.floor(Math.random() * rows);
+                    
+                    // 5x5 무작위 패턴 주입
+                    for(let i = -2; i <= 2; i++) {
+                        for(let j = -2; j <= 2; j++) {
+                            if(Math.random() > 0.6) {
+                                const targetX = (randomX + i + cols) % cols;
+                                const targetY = (randomY + j + rows) % rows;
+                                grid[targetX][targetY] = 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 6. 애니메이션 루프 (FPS 제어)
         let lastTime = 0;
         const fps = 12; // 픽셀이 커졌으므로 조금 더 무게감 있게 속도 조절
@@ -181,6 +249,9 @@
 
         function gameLoop(timestamp) {
             requestAnimationFrame(gameLoop);
+
+            // 매 프레임마다 정체 방지 로직 확인
+            injectEntropy(timestamp);
 
             if (timestamp - lastTime >= interval) {
                 lastTime = timestamp;
